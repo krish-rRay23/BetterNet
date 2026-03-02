@@ -1,0 +1,24 @@
+# Datasets and Media
+dataset/
+images/
+masks/
+*.jpg
+*.png
+*.json
+
+# Checkpoints and Logs
+checkpoints/
+logs/
+*.keras
+*.h5
+*.hdf5
+*.ckpt
+
+# Python Caches
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+*.ipynb_checkpoints/
