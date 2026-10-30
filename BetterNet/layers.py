@@ -88,3 +88,53 @@ class CBAMModule(Layer):
             'kernel_size': self.kernel_size
         })
         return config
+
+class CLFFModule(Layer):
+    """
+    Cross-Level Feature Fusion (CLFF) Module.
+    Computes a spatial differential between high-resolution and low-resolution features
+    to explicitly guide attention toward boundaries (2025 SOTA technique).
+    """
+    def __init__(self, filters, **kwargs):
+        super(CLFFModule, self).__init__(**kwargs)
+        self.filters = filters
+
+    def build(self, input_shape):
+        # input_shape is a list: [high_res_shape, low_res_shape]
+        self.conv_high = Conv2D(self.filters, (1, 1), padding='same', use_bias=False)
+        self.conv_low = Conv2D(self.filters, (1, 1), padding='same', use_bias=False)
+        
+        self.conv_fusion = Conv2D(self.filters, (3, 3), padding='same', activation='relu')
+        self.cbam = CBAMModule(ratio=8, kernel_size=7)
+        super(CLFFModule, self).build(input_shape)
+
+    def call(self, inputs):
+        # inputs[0]: High-resolution feature map (from encoder)
+        # inputs[1]: Low-resolution feature map (from decoder)
+        high_res, low_res = inputs
+        
+        # 1. Align dimensions
+        target_hw = tf.shape(high_res)[1:3]
+        low_res_up = tf.image.resize(low_res, size=target_hw, method='bilinear')
+        
+        # 2. Project to same channel depth
+        h_proj = self.conv_high(high_res)
+        l_proj = self.conv_low(low_res_up)
+        
+        # 3. Compute Boundary Map (Differential)
+        # Absolute difference highlights where the high-res details disagree with low-res semantics (the boundaries)
+        diff_map = tf.abs(h_proj - l_proj)
+        
+        # 4. Modulate the original features with the boundary map
+        fused = Concatenate()([h_proj, l_proj, diff_map])
+        fused = self.conv_fusion(fused)
+        
+        # 5. Apply CBAM attention to the boundary-aware fused feature
+        out = self.cbam(fused)
+        
+        return out
+        
+    def get_config(self):
+        config = super(CLFFModule, self).get_config()
+        config.update({'filters': self.filters})
+        return config
